@@ -14,12 +14,14 @@ import android.os.HandlerThread
 import android.view.Surface
 import android.view.TextureView
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.programminghut.realtime_object.ml.SsdMobilenetV11Metadata1
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
+import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,6 +38,11 @@ class MainActivity : AppCompatActivity() {
     lateinit var cameraManager: CameraManager
     lateinit var textureView: TextureView
     lateinit var model:SsdMobilenetV11Metadata1
+
+    var previousLocations: MutableMap<Int, RectF> = mutableMapOf()
+
+    var movementThreshold: Float = 50f  // Adjust this value according to your needs
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,23 +89,35 @@ class MainActivity : AppCompatActivity() {
                 paint.textSize = h/15f
                 paint.strokeWidth = h/85f
                 var x = 0
+
                 scores.forEachIndexed { index, fl ->
                     x = index
                     x *= 4
-                    if(fl > 0.5 && classes.get(index).toInt() == 0){ // assuming 1 is the "Person" class ID
+                    if (fl > 0.5 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
+                        val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
+                        val previousRect = previousLocations[index]
+                        if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
+                            // The object has moved! Perform actions as needed.
+                            // For example, display a toast message.
+                            Toast.makeText(this@MainActivity, "Hello, it's me Alice!", Toast.LENGTH_SHORT).show()
+                        }
+                        previousLocations[index] = currentRect
+
                         paint.setColor(colors.get(index))
                         paint.style = Paint.Style.STROKE
                         canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h, locations.get(x+3)*w, locations.get(x+2)*h), paint)
                         paint.style = Paint.Style.FILL
                         canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
                     }
+
                 }
-
-
                 imageView.setImageBitmap(mutable)
-
-
             }
+
+            fun rectDiff(rect1: RectF, rect2: RectF): Float {
+                return sqrt(((rect1.centerX() - rect2.centerX()) * (rect1.centerX() - rect2.centerX()) + (rect1.centerY() - rect2.centerY()) * (rect1.centerY() - rect2.centerY())).toFloat())
+            }
+
         }
 
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager

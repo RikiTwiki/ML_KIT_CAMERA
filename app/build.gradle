@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    compileSdk 32
+    compileSdkVersion 33
 
     defaultConfig {
         applicationId "com.programminghut.realtime_object"
-        minSdk 24
-        targetSdk 32
+        minSdkVersion 25 // This is the lowest version of Android you're willing to support.
+        targetSdkVersion 33 // This is the version of Android you expect your app to run on perfectly.
         versionCode 1
         versionName "1.0"
 
@@ -32,6 +32,7 @@ android {
     buildFeatures {
         mlModelBinding true
     }
+    namespace 'com.programminghut.realtime_object'
 }
 
 dependencies {
