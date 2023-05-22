@@ -90,29 +90,35 @@ class MainActivity : AppCompatActivity() {
                 paint.strokeWidth = h/85f
                 var x = 0
 
+                val averagePersonHeightInRealWorld = 310  // cm
+                val cameraVerticalFieldOfView = 100.0  // degrees, adjust this to your camera's actual field of view
+
                 scores.forEachIndexed { index, fl ->
                     x = index
                     x *= 4
                     if (fl > 0.65 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
                         val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
-                        val previousRect = previousLocations[index]
-                        if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
-                            // The object has moved! Perform actions as needed.
-                            // For example, display a toast message.
-                            Toast.makeText(this@MainActivity, "Hello, it's me Alice!", Toast.LENGTH_SHORT).show()
+                        val personHeightInPixels = locations[x+2]*h - locations[x]*h
+                        val distanceToPerson = (averagePersonHeightInRealWorld / 2) / Math.tan(Math.toRadians(cameraVerticalFieldOfView / 2)) / personHeightInPixels
 
-                            // Draw bounding box and label only if the person has moved
-                            paint.setColor(colors.get(index))
-                            paint.style = Paint.Style.STROKE
-                            canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h, locations.get(x+3)*w, locations.get(x+2)*h), paint)
-                            paint.style = Paint.Style.FILL
-                            canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
+                        if (distanceToPerson < 0.08) { // Only respond if person is within 1 meter
+                            val previousRect = previousLocations[index]
+                            if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
+                                // The object has moved! Perform actions as needed.
+                                // For example, display a toast message.
+                                Toast.makeText(this@MainActivity, "Hello, it's me Alice!", Toast.LENGTH_SHORT).show()
+
+                                // Draw bounding box and label only if the person has moved
+                                paint.setColor(colors.get(index))
+                                paint.style = Paint.Style.STROKE
+                                canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h, locations.get(x+3)*w, locations.get(x+2)*h), paint)
+                                paint.style = Paint.Style.FILL
+                                canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
+                            }
+                            // Update the previous location regardless of whether the person has moved
+                            previousLocations[index] = currentRect
                         }
-                        // Update the previous location regardless of whether the person has moved
-                        previousLocations[index] = currentRect
                     }
-
-
                 }
                 imageView.setImageBitmap(mutable)
             }
