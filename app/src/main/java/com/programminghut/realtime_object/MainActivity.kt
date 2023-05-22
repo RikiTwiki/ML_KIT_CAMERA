@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     var previousLocations: MutableMap<Int, RectF> = mutableMapOf()
 
-    var movementThreshold: Float = 50f  // Adjust this value according to your needs
+    var movementThreshold: Float = 150f  // Adjust this value according to your needs
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,15 +100,18 @@ class MainActivity : AppCompatActivity() {
                             // The object has moved! Perform actions as needed.
                             // For example, display a toast message.
                             Toast.makeText(this@MainActivity, "Hello, it's me Alice!", Toast.LENGTH_SHORT).show()
-                        }
-                        previousLocations[index] = currentRect
 
-                        paint.setColor(colors.get(index))
-                        paint.style = Paint.Style.STROKE
-                        canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h, locations.get(x+3)*w, locations.get(x+2)*h), paint)
-                        paint.style = Paint.Style.FILL
-                        canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
+                            // Draw bounding box and label only if the person has moved
+                            paint.setColor(colors.get(index))
+                            paint.style = Paint.Style.STROKE
+                            canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h, locations.get(x+3)*w, locations.get(x+2)*h), paint)
+                            paint.style = Paint.Style.FILL
+                            canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
+                        }
+                        // Update the previous location regardless of whether the person has moved
+                        previousLocations[index] = currentRect
                     }
+
 
                 }
                 imageView.setImageBitmap(mutable)
