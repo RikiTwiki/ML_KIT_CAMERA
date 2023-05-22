@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity() {
                 scores.forEachIndexed { index, fl ->
                     x = index
                     x *= 4
-                    if (fl > 0.5 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
+                    if (fl > 0.65 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
                         val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
                         val previousRect = previousLocations[index]
                         if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
