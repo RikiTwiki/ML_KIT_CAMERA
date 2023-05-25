@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     var previousLocations: MutableMap<Int, RectF> = mutableMapOf()
 
-    var movementThreshold: Float = 150f  // Adjust this value according to your needs
+    var movementThreshold: Float = 100f  // Adjust this value according to your needs
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,7 +90,7 @@ class MainActivity : AppCompatActivity() {
                 paint.strokeWidth = h/85f
                 var x = 0
 
-                val averagePersonHeightInRealWorld = 210  // cm
+                val averagePersonHeightInRealWorld = 1490  // cm
                 val cameraVerticalFieldOfView = 90.0  // degrees, adjust this to your camera's actual field of view
 
                 scores.forEachIndexed { index, fl ->
@@ -101,7 +101,7 @@ class MainActivity : AppCompatActivity() {
                         val personHeightInPixels = locations[x+2]*h - locations[x]*h
                         val distanceToPerson = (averagePersonHeightInRealWorld / 2) / Math.tan(Math.toRadians(cameraVerticalFieldOfView / 2)) / personHeightInPixels
 
-                        if (distanceToPerson < 0.09) { // Only respond if person is within 1 meter
+                        if (distanceToPerson < 8.0) { // Only respond if person is within 1 meter
                             val previousRect = previousLocations[index]
                             if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
                                 // The object has moved! Perform actions as needed.
