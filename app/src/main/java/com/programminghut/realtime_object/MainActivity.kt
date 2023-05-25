@@ -90,18 +90,18 @@ class MainActivity : AppCompatActivity() {
                 paint.strokeWidth = h/85f
                 var x = 0
 
-                val averagePersonHeightInRealWorld = 1490  // cm
+                val averagePersonHeightInRealWorld = 1250  // cm
                 val cameraVerticalFieldOfView = 90.0  // degrees, adjust this to your camera's actual field of view
 
                 scores.forEachIndexed { index, fl ->
                     x = index
                     x *= 4
-                    if (fl > 0.65 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
+                    if (fl > 0.60 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
                         val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
                         val personHeightInPixels = locations[x+2]*h - locations[x]*h
                         val distanceToPerson = (averagePersonHeightInRealWorld / 2) / Math.tan(Math.toRadians(cameraVerticalFieldOfView / 2)) / personHeightInPixels
 
-                        if (distanceToPerson < 8.0) { // Only respond if person is within 1 meter
+                        if (distanceToPerson < 0.3) { // Only respond if person is within 1 meter
                             val previousRect = previousLocations[index]
                             if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
                                 // The object has moved! Perform actions as needed.
