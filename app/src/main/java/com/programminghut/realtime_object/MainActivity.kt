@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity() {
                         val x = index * 4
                         val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
 
-                        val averagePersonHeightInRealWorld = 1250  // cm
+                        val averagePersonHeightInRealWorld = 150  // cm
                         val cameraVerticalFieldOfView = 90.0  // degrees, adjust this to your camera's actual field of view
                         val personHeightInPixels = locations[x+2]*h - locations[x]*h
                         val distanceToPerson = (averagePersonHeightInRealWorld / 2) / Math.tan(Math.toRadians(cameraVerticalFieldOfView / 2)) / personHeightInPixels
