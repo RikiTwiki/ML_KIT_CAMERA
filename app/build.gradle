@@ -46,4 +46,8 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.4'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'
+
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.9.0' // Adjust the version to match the TensorFlow Lite version in your project
+
+    implementation 'com.android.volley:volley:1.2.0'
 }

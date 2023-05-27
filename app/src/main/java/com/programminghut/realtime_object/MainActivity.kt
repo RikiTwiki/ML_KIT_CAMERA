@@ -1,5 +1,18 @@
 package com.programminghut.realtime_object
 
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
+
+import android.speech.tts.TextToSpeech
+
+import com.android.volley.Request
+import com.android.volley.RequestQueue
+import com.android.volley.Response
+import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.Volley
+import org.json.JSONObject
+
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
@@ -17,10 +30,12 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.programminghut.realtime_object.ml.SsdMobilenetV11Metadata1
+import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
+import java.util.Locale
 import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity() {
@@ -39,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     lateinit var textureView: TextureView
     lateinit var model:SsdMobilenetV11Metadata1
 
+    lateinit var tts: TextToSpeech
+
     var previousLocations: MutableMap<Int, RectF> = mutableMapOf()
 
     var movementThreshold: Float = 100f  // Adjust this value according to your needs
@@ -51,7 +68,35 @@ class MainActivity : AppCompatActivity() {
 
         labels = FileUtil.loadLabels(this, "labels.txt")
         imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
+
+
+        // Prepare GPU delegate.
+        val compatList = CompatibilityList();
+
+        val options = Interpreter.Options().apply {
+            if (compatList.isDelegateSupportedOnThisDevice) {
+                // if the device has a supported GPU, add the GPU delegate
+                val delegateOptions = compatList.bestOptionsForThisDevice
+                val gpuDelegate = GpuDelegate(delegateOptions)
+                this.addDelegate(gpuDelegate)
+            } else {
+                // if the GPU is not supported, run on 4 threads
+                this.setNumThreads(4)
+            }
+        }
+
+        tts = TextToSpeech(this) { status ->
+            if (status != TextToSpeech.ERROR) {
+                val russian = Locale("ru")
+                if (tts.isLanguageAvailable(russian) >= TextToSpeech.LANG_AVAILABLE) {
+                    tts.language = russian
+                }
+            }
+        }
+
+
         model = SsdMobilenetV11Metadata1.newInstance(this)
+
         val handlerThread = HandlerThread("videoThread")
         handlerThread.start()
         handler = Handler(handlerThread.looper)
@@ -59,84 +104,142 @@ class MainActivity : AppCompatActivity() {
         imageView = findViewById(R.id.imageView)
 
         textureView = findViewById(R.id.textureView)
-        textureView.surfaceTextureListener = object:TextureView.SurfaceTextureListener{
-            override fun onSurfaceTextureAvailable(p0: SurfaceTexture, p1: Int, p2: Int) {
+        textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                // This method will be called when the SurfaceTexture is available.
                 open_camera()
             }
-            override fun onSurfaceTextureSizeChanged(p0: SurfaceTexture, p1: Int, p2: Int) {
+
+            override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+                // This method will be called when the SurfaceTexture size changes.
+                // Add code here to handle size changes if necessary.
             }
 
-            override fun onSurfaceTextureDestroyed(p0: SurfaceTexture): Boolean {
+            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                // This method will be called just before the SurfaceTexture is destroyed.
+                // Return true if you take care of releasing the SurfaceTexture here, or false if you want the system to handle it.
                 return false
             }
 
-            override fun onSurfaceTextureUpdated(p0: SurfaceTexture) {
+            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+                // Convert the current frame to a bitmap
                 bitmap = textureView.bitmap!!
+
+                // Process the bitmap
                 var image = TensorImage.fromBitmap(bitmap)
                 image = imageProcessor.process(image)
 
+                // Run the model on the processed bitmap
                 val outputs = model.process(image)
                 val locations = outputs.locationsAsTensorBuffer.floatArray
                 val classes = outputs.classesAsTensorBuffer.floatArray
                 val scores = outputs.scoresAsTensorBuffer.floatArray
-                val numberOfDetections = outputs.numberOfDetectionsAsTensorBuffer.floatArray
 
+                // Create a new bitmap to draw bounding boxes and labels on
                 var mutable = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(mutable)
 
                 val h = mutable.height
                 val w = mutable.width
-                paint.textSize = h/15f
-                paint.strokeWidth = h/85f
-                var x = 0
-
-                val averagePersonHeightInRealWorld = 1490  // cm
-                val cameraVerticalFieldOfView = 90.0  // degrees, adjust this to your camera's actual field of view
+                paint.textSize = h / 15f
+                paint.strokeWidth = h / 85f
 
                 scores.forEachIndexed { index, fl ->
-                    x = index
-                    x *= 4
-                    if (fl > 0.65 && classes[index].toInt() == 0) { // assuming 1 is the "Person" class ID
+                    if (fl > 0.60 && classes[index].toInt() == 0) {
+                        val x = index * 4
                         val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
+
+                        val averagePersonHeightInRealWorld = 1250  // cm
+                        val cameraVerticalFieldOfView = 90.0  // degrees, adjust this to your camera's actual field of view
                         val personHeightInPixels = locations[x+2]*h - locations[x]*h
                         val distanceToPerson = (averagePersonHeightInRealWorld / 2) / Math.tan(Math.toRadians(cameraVerticalFieldOfView / 2)) / personHeightInPixels
 
-                        if (distanceToPerson < 8.0) { // Only respond if person is within 1 meter
+                        if (distanceToPerson < 0.3) {
                             val previousRect = previousLocations[index]
-                            if (previousRect != null && rectDiff(previousRect, currentRect) > movementThreshold) {
+                            if (previousRect == null || rectDiff(previousRect, currentRect) > movementThreshold) {
                                 // The object has moved! Perform actions as needed.
-                                // For example, display a toast message.
+
+                                // Display a toast message
                                 Toast.makeText(this@MainActivity, "Hello, it's me Alice!", Toast.LENGTH_SHORT).show()
 
-                                // Draw bounding box and label only if the person has moved
-                                paint.setColor(colors.get(index))
+                                // Have the voice assistant greet the person
+                                tts.speak("Привет, меня зовут Алиса", TextToSpeech.QUEUE_FLUSH, null, "")
+
+                                // Fetch and speak out the weather
+                                fetchWeatherData()
+
+                                // Draw bounding box and label
+                                paint.color = colors[index]
                                 paint.style = Paint.Style.STROKE
-                                canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h, locations.get(x+3)*w, locations.get(x+2)*h), paint)
+                                canvas.drawRect(currentRect, paint)
                                 paint.style = Paint.Style.FILL
-                                canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
+                                canvas.drawText(labels[classes[index].toInt()] + " " + fl.toString(), locations[x+1]*w, locations[x]*h, paint)
                             }
-                            // Update the previous location regardless of whether the person has moved
+
+                            // Store the current location for next time
                             previousLocations[index] = currentRect
                         }
                     }
                 }
+
+                // Show the bitmap with bounding boxes and labels
                 imageView.setImageBitmap(mutable)
             }
 
             fun rectDiff(rect1: RectF, rect2: RectF): Float {
-                return sqrt(((rect1.centerX() - rect2.centerX()) * (rect1.centerX() - rect2.centerX()) + (rect1.centerY() - rect2.centerY()) * (rect1.centerY() - rect2.centerY())).toFloat())
-            }
+                    return sqrt(((rect1.centerX() - rect2.centerX()) * (rect1.centerX() - rect2.centerX()) + (rect1.centerY() - rect2.centerY()) * (rect1.centerY() - rect2.centerY())).toFloat())
+                }
 
+            // Your existing code...
         }
 
-        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
+        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
+
+    fun fetchWeatherData() {
+        // For this example, let's assume that the location is hardcoded. You should replace this with
+        // real location data in your application.
+        val city = "Bishkek"
+        val apiKey = "8d323aeb96edb24edffa1656c67efc3b"
+
+        val url = "https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey&units=metric&lang=ru"
+
+        // Use Android's built-in networking library (Volley) to fetch data.
+        val queue = Volley.newRequestQueue(this)
+        val stringRequest = StringRequest(Request.Method.GET, url,
+            { response ->
+                // Parse the response to get the current weather.
+                val jsonObject = JSONObject(response)
+                val weather = jsonObject.getJSONArray("weather").getJSONObject(0).getString("description")
+                val temperature = jsonObject.getJSONObject("main").getString("temp")
+                val weatherInRussian = "Погода в $city: $weather, температура: $temperature градусов."
+
+                // Speak out the weather.
+                tts.speak(weatherInRussian, TextToSpeech.QUEUE_FLUSH, null, "")
+            },
+            { error ->
+                // Add this line to handle errors
+                Toast.makeText(this@MainActivity, "Error fetching weather: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        )
+
+        queue.add(stringRequest)
+    }
+
+
 
     override fun onDestroy() {
         super.onDestroy()
         model.close()
+
+        // Shut down TTS
+        if (tts != null) {
+            tts.stop()
+            tts.shutdown()
+        }
     }
+
 
     @SuppressLint("MissingPermission")
     fun open_camera(){
