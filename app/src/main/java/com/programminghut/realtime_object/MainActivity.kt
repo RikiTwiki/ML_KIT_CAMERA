@@ -15,6 +15,7 @@ import org.json.JSONObject
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.hardware.camera2.CameraCaptureSession
@@ -24,6 +25,9 @@ import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.Surface
 import android.view.TextureView
 import android.widget.ImageView
@@ -60,6 +64,9 @@ class MainActivity : AppCompatActivity() {
 
     var movementThreshold: Float = 100f  // Adjust this value according to your needs
 
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var recognizerIntent: Intent? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +100,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
 
 
         model = SsdMobilenetV11Metadata1.newInstance(this)
@@ -149,8 +157,8 @@ class MainActivity : AppCompatActivity() {
                         val x = index * 4
                         val currentRect = RectF(locations[x+1]*w, locations[x]*h, locations[x+3]*w, locations[x+2]*h)
 
-                        val averagePersonHeightInRealWorld = 150  // cm
-                        val cameraVerticalFieldOfView = 90.0  // degrees, adjust this to your camera's actual field of view
+                        val averagePersonHeightInRealWorld = 200  // cm
+                        val cameraVerticalFieldOfView = 50.0  // degrees, adjust this to your camera's actual field of view
                         val personHeightInPixels = locations[x+2]*h - locations[x]*h
                         val distanceToPerson = (averagePersonHeightInRealWorld / 2) / Math.tan(Math.toRadians(cameraVerticalFieldOfView / 2)) / personHeightInPixels
 
@@ -165,8 +173,7 @@ class MainActivity : AppCompatActivity() {
                                 // Have the voice assistant greet the person
                                 tts.speak("Привет, меня зовут Алиса", TextToSpeech.QUEUE_FLUSH, null, "")
 
-                                // Fetch and speak out the weather
-                                fetchWeatherData()
+
 
                                 // Draw bounding box and label
                                 paint.color = colors[index]
@@ -174,6 +181,8 @@ class MainActivity : AppCompatActivity() {
                                 canvas.drawRect(currentRect, paint)
                                 paint.style = Paint.Style.FILL
                                 canvas.drawText(labels[classes[index].toInt()] + " " + fl.toString(), locations[x+1]*w, locations[x]*h, paint)
+
+                                initSpeechRecognizer()
                             }
 
                             // Store the current location for next time
@@ -196,6 +205,41 @@ class MainActivity : AppCompatActivity() {
 
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
+
+    fun initSpeechRecognizer() {
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale("ru").toString())  // Set language to Russian
+
+        val listener = object : RecognitionListener {
+            override fun onResults(results: Bundle) {
+                val matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (matches != null) {
+                    for (result in matches) {
+                        if (result.contains("weather", ignoreCase = true) || result.contains("погода", ignoreCase = true)) {
+                            // The user asked about the weather!
+                            fetchWeatherData()
+                            break
+                        }
+                    }
+                }
+            }
+
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+
+        recognizer.setRecognitionListener(listener)
+        recognizer.startListening(intent) // Start listening to the user's speech
+    }
+
 
     fun fetchWeatherData() {
         // For this example, let's assume that the location is hardcoded. You should replace this with
@@ -273,8 +317,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun get_permission(){
-        if(ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED){
-            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 101)
+        val allNeededPermissions = mutableListOf(
+            android.Manifest.permission.CAMERA,
+            android.Manifest.permission.RECORD_AUDIO // For Speech Recognition
+        )
+        allNeededPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.also { permissions ->
+            if (permissions.isNotEmpty()) {
+                requestPermissions(permissions.toTypedArray(), 101)
+            }
         }
     }
     override fun onRequestPermissionsResult(
@@ -283,7 +335,7 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if(grantResults[0] != PackageManager.PERMISSION_GRANTED){
+        if(grantResults.any { it != PackageManager.PERMISSION_GRANTED }){
             get_permission()
         }
     }
