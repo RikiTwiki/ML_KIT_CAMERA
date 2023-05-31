@@ -21,6 +21,7 @@ import android.graphics.*
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
@@ -57,6 +58,9 @@ class MainActivity : AppCompatActivity() {
     lateinit var cameraManager: CameraManager
     lateinit var textureView: TextureView
     lateinit var model:SsdMobilenetV11Metadata1
+
+    var isPersonDetected = false
+
 
     lateinit var tts: TextToSpeech
 
@@ -130,6 +134,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+                if (isPersonDetected) {
+                    return
+                }
                 // Convert the current frame to a bitmap
                 bitmap = textureView.bitmap!!
 
@@ -165,24 +172,15 @@ class MainActivity : AppCompatActivity() {
                         if (distanceToPerson < 0.3) {
                             val previousRect = previousLocations[index]
                             if (previousRect == null || rectDiff(previousRect, currentRect) > movementThreshold) {
-                                // The object has moved! Perform actions as needed.
 
-                                // Display a toast message
-                                Toast.makeText(this@MainActivity, "Hello, it's me Alice!", Toast.LENGTH_SHORT).show()
+                                tts.speak("Привет", TextToSpeech.QUEUE_FLUSH, null, "")
 
-                                // Have the voice assistant greet the person
-                                tts.speak("Привет, меня зовут Алиса", TextToSpeech.QUEUE_FLUSH, null, "")
-
-
-
-                                // Draw bounding box and label
-                                paint.color = colors[index]
-                                paint.style = Paint.Style.STROKE
-                                canvas.drawRect(currentRect, paint)
-                                paint.style = Paint.Style.FILL
-                                canvas.drawText(labels[classes[index].toInt()] + " " + fl.toString(), locations[x+1]*w, locations[x]*h, paint)
-
-                                initSpeechRecognizer()
+                                // If person detected, close the app and open website
+                                isPersonDetected = true
+                                val websiteUrl = "https://e.customs.gov.kg/passenger-declaration" // Replace with your website URL
+                                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl))
+                                startActivity(browserIntent)
+                                finish() // Close the application
                             }
 
                             // Store the current location for next time
@@ -191,13 +189,14 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+
                 // Show the bitmap with bounding boxes and labels
                 imageView.setImageBitmap(mutable)
             }
 
             fun rectDiff(rect1: RectF, rect2: RectF): Float {
-                    return sqrt(((rect1.centerX() - rect2.centerX()) * (rect1.centerX() - rect2.centerX()) + (rect1.centerY() - rect2.centerY()) * (rect1.centerY() - rect2.centerY())).toFloat())
-                }
+                return sqrt(((rect1.centerX() - rect2.centerX()) * (rect1.centerX() - rect2.centerX()) + (rect1.centerY() - rect2.centerY()) * (rect1.centerY() - rect2.centerY())).toFloat())
+            }
 
             // Your existing code...
         }
@@ -217,7 +216,7 @@ class MainActivity : AppCompatActivity() {
                 val matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (matches != null) {
                     for (result in matches) {
-                        if (result.contains("weather", ignoreCase = true) || result.contains("погода", ignoreCase = true)) {
+                        if (result.contains("weather", ignoreCase = true) || result.contains("привет", ignoreCase = true)) {
                             // The user asked about the weather!
                             fetchWeatherData()
                             break
@@ -261,6 +260,17 @@ class MainActivity : AppCompatActivity() {
 
                 // Speak out the weather.
                 tts.speak(weatherInRussian, TextToSpeech.QUEUE_FLUSH, null, "")
+
+
+                isPersonDetected = true
+                val intent = packageManager.getLaunchIntentForPackage("ru.yandex.searchplugin")
+                if (intent != null) {
+                    startActivity(intent)
+                } else {
+                    startActivity(Intent(Intent.ACTION_VIEW).apply {
+                        data = Uri.parse("https://ya.ru/?utm_referrer=https%3A%2F%2Fwww.google.com%2F")
+                    })
+                }
             },
             { error ->
                 // Add this line to handle errors
