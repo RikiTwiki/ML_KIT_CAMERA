@@ -1,16 +1,22 @@
-package com.programminghut.realtime_object
-
-
-import MyForegroundService
 import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.os.Handler
 import android.os.HandlerThread
 import android.speech.RecognitionListener
@@ -20,9 +26,7 @@ import android.speech.tts.TextToSpeech
 import android.view.Surface
 import android.view.TextureView
 import android.widget.ImageView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationCompat
 import com.android.volley.Request
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
@@ -38,7 +42,7 @@ import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.util.Locale
 import kotlin.math.sqrt
 
-class MainActivity : AppCompatActivity() {
+class MyForegroundService: Service() {
 
     lateinit var labels:List<String>
     var colors = listOf<Int>(
@@ -66,20 +70,45 @@ class MainActivity : AppCompatActivity() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var recognizerIntent: Intent? = null
 
+    private val NOTIFICATION_ID = 1
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        get_permission()
+    private fun createNotification(): Notification {
+        val notificationChannelId = "MY_CHANNEL"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationChannel = NotificationChannel(
+                notificationChannelId,
+                "My Notifications",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(notificationChannel)
+        }
+
+        val builder = NotificationCompat.Builder(this, notificationChannelId)
+        builder.setOngoing(true)
+            .setContentTitle("Service is running")
+            .setContentText("Detecting humans...")
+
+        return builder.build()
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+
+        val handlerThread = HandlerThread("MyBackgroundService")
+        handlerThread.start()
+        handler = Handler(handlerThread.looper)
         camera()
     }
 
+    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
+        startForeground(NOTIFICATION_ID, createNotification())
+
+        return START_STICKY
+    }
+
     fun camera() {
-        val intent = Intent(this, MyForegroundService::class.java)
-        startService(intent)
-
-
-
 
         labels = FileUtil.loadLabels(this, "labels.txt")
         imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
@@ -117,9 +146,7 @@ class MainActivity : AppCompatActivity() {
         handlerThread.start()
         handler = Handler(handlerThread.looper)
 
-        imageView = findViewById(R.id.imageView)
 
-        textureView = findViewById(R.id.textureView)
         textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
                 // This method will be called when the SurfaceTexture is available.
@@ -208,6 +235,7 @@ class MainActivity : AppCompatActivity() {
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
 
+
     fun initSpeechRecognizer() {
         val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -253,7 +281,8 @@ class MainActivity : AppCompatActivity() {
 
         // Use Android's built-in networking library (Volley) to fetch data.
         val queue = Volley.newRequestQueue(this)
-        val stringRequest = StringRequest(Request.Method.GET, url,
+        val stringRequest = StringRequest(
+            Request.Method.GET, url,
             { response ->
                 // Parse the response to get the current weather.
                 val jsonObject = JSONObject(response)
@@ -272,7 +301,7 @@ class MainActivity : AppCompatActivity() {
             },
             { error ->
                 // Add this line to handle errors
-                Toast.makeText(this@MainActivity, "Error fetching weather: ${error.message}", Toast.LENGTH_LONG).show()
+//                Toast.makeText(this, "Error fetching weather: ${error.message}", Toast.LENGTH_LONG).show()
             }
         )
 
@@ -280,20 +309,6 @@ class MainActivity : AppCompatActivity() {
 
 
     }
-
-
-
-    override fun onDestroy() {
-        super.onDestroy()
-        model.close()
-
-        // Shut down TTS
-        if (tts != null) {
-            tts.stop()
-            tts.shutdown()
-        }
-    }
-
 
     @SuppressLint("MissingPermission")
     fun open_camera(){
@@ -326,27 +341,29 @@ class MainActivity : AppCompatActivity() {
         }, handler)
     }
 
-    fun get_permission(){
-        val allNeededPermissions = mutableListOf(
-            android.Manifest.permission.CAMERA,
-            android.Manifest.permission.RECORD_AUDIO // For Speech Recognition
-        )
-        allNeededPermissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }.also { permissions ->
-            if (permissions.isNotEmpty()) {
-                requestPermissions(permissions.toTypedArray(), 101)
-            }
-        }
+
+
+    override fun onBind(intent: Intent): IBinder? {
+        return null
     }
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if(grantResults.any { it != PackageManager.PERMISSION_GRANTED }){
-            get_permission()
-        }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        // Остановите обработку изображений и закройте модель
+        model.close()
+//        imageProcessor.close()
+
+        // Закройте соединение с камерой
+        cameraDevice.close()
+
+        // Освободите ресурсы, связанные с TextToSpeech и SpeechRecognizer
+        tts.shutdown()
+        speechRecognizer?.destroy()
+
+        // Очистите HandlerThread
+        handler.removeCallbacksAndMessages(null)
+        handler.looper.quitSafely()
     }
+
 }
