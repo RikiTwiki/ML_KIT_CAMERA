@@ -1,35 +1,36 @@
 import android.annotation.SuppressLint
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
+import android.app.*
+import android.app.Service.START_NOT_STICKY
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.os.Binder
 import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.IBinder
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.util.Log
 import android.view.Surface
 import android.view.TextureView
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.android.volley.Request
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
+import com.programminghut.realtime_object.R
 import com.programminghut.realtime_object.ml.SsdMobilenetV11Metadata1
 import org.json.JSONObject
 import org.tensorflow.lite.Interpreter
@@ -39,96 +40,70 @@ import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
-import java.util.Locale
+import java.util.*
 import kotlin.math.sqrt
 
-class MyForegroundService: Service() {
-
+class MyForegroundService : Service() {
     lateinit var labels:List<String>
-    var colors = listOf<Int>(
-        Color.BLUE, Color.GREEN, Color.RED, Color.CYAN, Color.GRAY, Color.BLACK,
-        Color.DKGRAY, Color.MAGENTA, Color.YELLOW, Color.RED)
+    private val channelId = "ForegroundServiceChannel"
+    private val NOTIFICATION_ID = 1
+
+    private val binder = LocalBinder()
+
+
+    private lateinit var tts: TextToSpeech
     val paint = Paint()
-    lateinit var imageProcessor: ImageProcessor
-    lateinit var bitmap:Bitmap
+    var previousLocations: MutableMap<Int, RectF> = mutableMapOf()
+    var movementThreshold: Float = 100f  // Adjust this value according to your needs
     lateinit var imageView: ImageView
-    lateinit var cameraDevice: CameraDevice
-    lateinit var handler: Handler
+
+
+
+
     lateinit var cameraManager: CameraManager
+
+    lateinit var cameraDevice: CameraDevice
+    lateinit var surface: Surface
+    lateinit var handler: Handler
     lateinit var textureView: TextureView
-    lateinit var model:SsdMobilenetV11Metadata1
 
     var isPersonDetected = false
 
 
-    lateinit var tts: TextToSpeech
 
-    var previousLocations: MutableMap<Int, RectF> = mutableMapOf()
+    private lateinit var imageProcessor: ImageProcessor
+    private lateinit var model: SsdMobilenetV11Metadata1
+    private lateinit var interpreter: Interpreter
+    private lateinit var bitmap: Bitmap
 
-    var movementThreshold: Float = 100f  // Adjust this value according to your needs
-
-    private var speechRecognizer: SpeechRecognizer? = null
-    private var recognizerIntent: Intent? = null
-
-    private val NOTIFICATION_ID = 1
-
-    private fun createNotification(): Notification {
-        val notificationChannelId = "MY_CHANNEL"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationChannel = NotificationChannel(
-                notificationChannelId,
-                "My Notifications",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(notificationChannel)
-        }
-
-        val builder = NotificationCompat.Builder(this, notificationChannelId)
-        builder.setOngoing(true)
-            .setContentTitle("Service is running")
-            .setContentText("Detecting humans...")
-
-        return builder.build()
+    inner class LocalBinder : Binder() {
+        fun getService(): MyForegroundService = this@MyForegroundService
     }
 
     override fun onCreate() {
         super.onCreate()
+        createNotificationChannel()
+        Toast.makeText(this@MyForegroundService, "Success openSuccess!", Toast.LENGTH_LONG).show()
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Foreground Service")
+            .setSmallIcon(R.drawable.ic_notification) // TODO: Замените на ваш значок уведомления
+            .build()
+        startForeground(NOTIFICATION_ID, notification)
 
-        val handlerThread = HandlerThread("MyBackgroundService")
-        handlerThread.start()
-        handler = Handler(handlerThread.looper)
-        camera()
-    }
-
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification())
-
-        return START_STICKY
-    }
-
-    fun camera() {
 
         labels = FileUtil.loadLabels(this, "labels.txt")
+        // Здесь должна быть вся ваша логика, связанная с камерой, TextToSpeech, SpeechRecognizer и другими
         imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
-
-
-        // Prepare GPU delegate.
-        val compatList = CompatibilityList();
-
+        val compatList = CompatibilityList()
         val options = Interpreter.Options().apply {
             if (compatList.isDelegateSupportedOnThisDevice) {
-                // if the device has a supported GPU, add the GPU delegate
                 val delegateOptions = compatList.bestOptionsForThisDevice
                 val gpuDelegate = GpuDelegate(delegateOptions)
                 this.addDelegate(gpuDelegate)
             } else {
-                // if the GPU is not supported, run on 4 threads
                 this.setNumThreads(4)
             }
         }
-
         tts = TextToSpeech(this) { status ->
             if (status != TextToSpeech.ERROR) {
                 val russian = Locale("ru")
@@ -137,10 +112,9 @@ class MyForegroundService: Service() {
                 }
             }
         }
-
-
-
+        // Путь к файлу модели может отличаться, в зависимости от того, как вы его добавили в проект
         model = SsdMobilenetV11Metadata1.newInstance(this)
+
 
         val handlerThread = HandlerThread("videoThread")
         handlerThread.start()
@@ -235,7 +209,6 @@ class MyForegroundService: Service() {
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
 
-
     fun initSpeechRecognizer() {
         val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -268,6 +241,8 @@ class MyForegroundService: Service() {
 
         recognizer.setRecognitionListener(listener)
         recognizer.startListening(intent) // Start listening to the user's speech
+
+        isPersonDetected = false
     }
 
 
@@ -296,12 +271,11 @@ class MyForegroundService: Service() {
 
                 isPersonDetected = false
 
-                camera()
 
             },
             { error ->
                 // Add this line to handle errors
-//                Toast.makeText(this, "Error fetching weather: ${error.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MyForegroundService, "Error fetching weather: ${error.message}", Toast.LENGTH_LONG).show()
             }
         )
 
@@ -309,6 +283,37 @@ class MyForegroundService: Service() {
 
 
     }
+
+
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        open_camera()
+        return START_NOT_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return binder
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val serviceChannel = NotificationChannel(
+                channelId,
+                "Foreground Service Channel",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(serviceChannel)
+        }
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        interpreter.close()
+        tts.shutdown()
+    }
+
 
     @SuppressLint("MissingPermission")
     fun open_camera(){
@@ -341,29 +346,5 @@ class MyForegroundService: Service() {
         }, handler)
     }
 
-
-
-    override fun onBind(intent: Intent): IBinder? {
-        return null
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-
-        // Остановите обработку изображений и закройте модель
-        model.close()
-//        imageProcessor.close()
-
-        // Закройте соединение с камерой
-        cameraDevice.close()
-
-        // Освободите ресурсы, связанные с TextToSpeech и SpeechRecognizer
-        tts.shutdown()
-        speechRecognizer?.destroy()
-
-        // Очистите HandlerThread
-        handler.removeCallbacksAndMessages(null)
-        handler.looper.quitSafely()
-    }
 
 }

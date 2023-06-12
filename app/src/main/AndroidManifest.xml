@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="true" />
+
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.INTERNET" />
@@ -18,7 +22,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Realtime_object"
         tools:targetApi="31">
-        <service android:name=".MyForegroundService" android:exported="true" android:foregroundServiceType="camera|microphone" />
+        <service android:name="MyForegroundService" android:enabled="true" android:exported="true" android:foregroundServiceType="camera|microphone" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
