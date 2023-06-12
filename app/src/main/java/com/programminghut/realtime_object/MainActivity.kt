@@ -72,14 +72,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         get_permission()
         camera()
+
+
     }
 
     fun camera() {
-        val intent = Intent(this, MyForegroundService::class.java)
-        startService(intent)
-
-
-
 
         labels = FileUtil.loadLabels(this, "labels.txt")
         imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
@@ -120,6 +117,9 @@ class MainActivity : AppCompatActivity() {
         imageView = findViewById(R.id.imageView)
 
         textureView = findViewById(R.id.textureView)
+
+        val intent = Intent(this, MyForegroundService::class.java)
+        startService(intent)
         textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
                 // This method will be called when the SurfaceTexture is available.
@@ -210,6 +210,10 @@ class MainActivity : AppCompatActivity() {
 
     fun initSpeechRecognizer() {
         val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        if (recognizer == null) {
+            isPersonDetected
+            camera()
+        }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale("ru").toString())  // Set language to Russian
@@ -240,6 +244,9 @@ class MainActivity : AppCompatActivity() {
 
         recognizer.setRecognitionListener(listener)
         recognizer.startListening(intent) // Start listening to the user's speech
+
+        isPersonDetected = false
+        camera()
     }
 
 
